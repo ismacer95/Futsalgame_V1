@@ -1,0 +1,149 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Futsal Master - Táctica Avanzada</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #020617;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+        /* Animación para el QR y overlays */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+<link rel="stylesheet" href="./index.css">
+</head>
+<body>
+    <div id="root"></div>
+
+
+<script src="https://unpkg.com/@babel/standalone@7.24.10/babel.min.js"></script>
+<script type="module">
+/**
+ * TS/TSX runtime loader for GitHub Pages.
+ * It fetches local .ts/.tsx modules, transpiles them with Babel (typescript + react),
+ * rewrites relative imports to Blob URLs, and then imports the entry module.
+ */
+const EXTENSIONS = ["", ".ts", ".tsx", ".js", ".jsx"];
+
+function isBare(spec) {
+  return !spec.startsWith(".") && !spec.startsWith("/") && !spec.startsWith("http");
+}
+
+async function resolveUrl(spec, importerUrl) {
+  if (isBare(spec) || spec.startsWith("http")) return spec;
+  // Make relative to importerUrl
+  const base = importerUrl ? new URL(importerUrl, location.href) : new URL(location.href);
+  // If spec starts with "/", make it relative to current path (GitHub Pages subpath-safe)
+  let normalized = spec.startsWith("/") ? "." + spec : spec;
+  // Try extensions
+  for (const ext of EXTENSIONS) {
+    const candidate = new URL(normalized + ext, base).href;
+    try {
+      const res = await fetch(candidate, { method: "HEAD" });
+      if (res.ok) return candidate;
+    } catch {}
+  }
+  // Fallback (may still work if server resolves it)
+  return new URL(normalized, base).href;
+}
+
+const cache = new Map(); // url -> { blobUrl }
+
+async function transpileModule(url) {
+  if (cache.has(url)) return cache.get(url).blobUrl;
+
+  const code = await (await fetch(url)).text();
+
+  // Find static import specifiers
+  const importRe = /(?:import\s+(?:[^'"]+?\s+from\s+)?|export\s+[^'"]*?\s+from\s+|import\()\s*["']([^"']+)["']/g;
+  const deps = [];
+  let m;
+  while ((m = importRe.exec(code))) {
+    const spec = m[1];
+    if (isBare(spec) || spec.startsWith("http")) continue;
+    deps.push(spec);
+  }
+
+  // Resolve and transpile dependencies first
+  const resolvedDepMap = new Map(); // original spec -> blobUrl
+  for (const spec of deps) {
+    const depUrl = await resolveUrl(spec, url);
+    const depBlobUrl = await transpileModule(depUrl);
+    resolvedDepMap.set(spec, depBlobUrl);
+  }
+
+  // Rewrite relative import specifiers to blob urls
+  let rewritten = code;
+  for (const [spec, blobUrl] of resolvedDepMap.entries()) {
+    // Replace occurrences in import/export statements and dynamic import()
+    // Keep it simple: direct string replace with quoted spec.
+    rewritten = rewritten
+      .replaceAll(`'${spec}'`, `'${blobUrl}'`)
+      .replaceAll(`"${spec}"`, `"${blobUrl}"`);
+  }
+
+  // Babel transform
+  const transformed = Babel.transform(rewritten, {
+    filename: url,
+    sourceType: "module",
+    presets: [
+      ["typescript", { allExtensions: true, isTSX: true }],
+      ["react", { runtime: "automatic" }]
+    ],
+    plugins: [],
+    sourceMaps: "inline",
+    babelrc: false,
+    configFile: false
+  }).code;
+
+  const blob = new Blob([transformed], { type: "text/javascript" });
+  const blobUrl = URL.createObjectURL(blob);
+  cache.set(url, { blobUrl });
+  return blobUrl;
+}
+
+(async () => {
+  const entry = await resolveUrl("./index.tsx", null);
+  const entryBlob = await transpileModule(entry);
+  await import(entryBlob);
+})().catch((err) => {
+  console.error(err);
+  const pre = document.createElement("pre");
+  pre.style.whiteSpace = "pre-wrap";
+  pre.style.padding = "12px";
+  pre.style.color = "white";
+  pre.textContent = "Error al cargar la app:\n\n" + (err?.stack || err?.message || String(err));
+  document.body.appendChild(pre);
+});
+</script>
+
+</body>
+</html>
